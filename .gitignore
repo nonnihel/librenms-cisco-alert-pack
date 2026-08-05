@@ -1,0 +1,3 @@
+config/alert-pack.env
+backups/*.json
+__pycache__/
