@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+set -euo pipefail
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+CFG="${1:-$ROOT/config/alert-pack.env}"
+[[ -f "$CFG" ]] || { echo "Vantar $CFG"; exit 1; }
+grep -q '^LIBRENMS_URL=https\?://' "$CFG" || { echo "LIBRENMS_URL vantar eða er rangt"; exit 1; }
+grep -q '^LIBRENMS_TOKEN=' "$CFG" || { echo "LIBRENMS_TOKEN vantar"; exit 1; }
+! grep -q '^LIBRENMS_TOKEN=CHANGE_ME' "$CFG" || { echo "Skipta þarf út CHANGE_ME"; exit 1; }
+python3 -m json.tool "$ROOT/manifests/rules.json" >/dev/null
+python3 -m json.tool "$ROOT/manifests/templates.json" >/dev/null
+echo "Config og manifests líta vel út."
