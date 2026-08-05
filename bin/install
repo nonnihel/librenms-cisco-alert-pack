@@ -1,0 +1,147 @@
+#!/usr/bin/env python3
+import argparse, json, os, ssl, sys, urllib.request, urllib.error
+from pathlib import Path
+from datetime import datetime
+
+ROOT = Path(__file__).resolve().parents[1]
+
+def load_env(path):
+    data={}
+    for raw in path.read_text(encoding="utf-8").splitlines():
+        line=raw.strip()
+        if not line or line.startswith("#") or "=" not in line: continue
+        k,v=line.split("=",1); data[k.strip()]=v.strip()
+    return data
+
+class API:
+    def __init__(self, base, token, verify=True, dry=False):
+        self.base=base.rstrip("/")
+        self.token=token
+        self.ctx = ssl.create_default_context() if verify else ssl._create_unverified_context()
+        self.dry=dry
+    def call(self, method, path, payload=None):
+        url=self.base + "/api/v0" + path
+        body=None if payload is None else json.dumps(payload).encode()
+        if self.dry and method not in ("GET",):
+            print(f"[DRY-RUN] {method} {path}")
+            return {"status":"ok","dry_run":True}
+        req=urllib.request.Request(url,data=body,method=method,headers={
+            "X-Auth-Token":self.token,"Content-Type":"application/json","Accept":"application/json"})
+        try:
+            with urllib.request.urlopen(req,context=self.ctx,timeout=45) as r:
+                return json.loads(r.read().decode())
+        except urllib.error.HTTPError as e:
+            detail=e.read().decode(errors="replace")
+            raise RuntimeError(f"HTTP {e.code} {method} {path}: {detail}")
+        except Exception as e:
+            raise RuntimeError(f"{method} {path}: {e}")
+
+def find_by_name(items, name):
+    for item in items:
+        if item.get("name")==name: return item
+    return None
+
+def main():
+    ap=argparse.ArgumentParser(description="Install/update Averna Cisco alert pack")
+    ap.add_argument("--config",default=str(ROOT/"config/alert-pack.env"))
+    ap.add_argument("--dry-run",action="store_true")
+    ap.add_argument("--no-backup",action="store_true")
+    args=ap.parse_args()
+
+    cfgpath=Path(args.config)
+    if not cfgpath.exists():
+        sys.exit(f"Config vantar: {cfgpath}. Afritaðu alert-pack.env.example.")
+    cfg=load_env(cfgpath)
+    for k in ("LIBRENMS_URL","LIBRENMS_TOKEN"):
+        if not cfg.get(k) or cfg[k]=="CHANGE_ME": sys.exit(f"{k} vantar í config.")
+    verify=cfg.get("VERIFY_TLS","true").lower() in ("1","true","yes")
+    api=API(cfg["LIBRENMS_URL"],cfg["LIBRENMS_TOKEN"],verify,args.dry_run)
+    prefix=cfg.get("RULE_PREFIX","Averna Cisco -").strip()
+    op_id=cfg.get("ALERT_OPERATION_ID","").strip() or None
+    transports=[x.strip() for x in cfg.get("TRANSPORT_TARGETS","").split(",") if x.strip()]
+
+    existing_rules=api.call("GET","/rules").get("rules",[])
+    existing_templates=api.call("GET","/alert_templates").get("alert_templates",[])
+
+    if not args.no_backup and not args.dry_run:
+        stamp=datetime.now().strftime("%Y%m%d-%H%M%S")
+        out=ROOT/"backups"/f"before-install-{stamp}.json"
+        out.write_text(json.dumps({"rules":existing_rules,"templates":existing_templates},ensure_ascii=False,indent=2),encoding="utf-8")
+        print(f"Backup: {out}")
+
+    rules=json.loads((ROOT/"manifests/rules.json").read_text(encoding="utf-8"))
+    tdefs=json.loads((ROOT/"manifests/templates.json").read_text(encoding="utf-8"))
+
+    created_rule_ids={}
+    for idx,r in enumerate(rules):
+        name=f"{prefix} {r['name']}".replace("  "," ")
+        old=find_by_name(existing_rules,name)
+        payload={
+          "devices":["-1"],"groups":[],"locations":[],"invert_map":False,
+          "name":name,"builder":r["builder"],"severity":r["severity"],
+          "disabled":r["disabled"],"invert":False,"notes":r["notes"]
+        }
+        if op_id:
+            payload["alert_operation_id"]=int(op_id)
+        elif transports:
+            if idx==0:
+                payload["operations"]=[{
+                    "name":cfg.get("OPERATION_NAME","Averna Cisco - Network Operations"),
+                    "operation_phase":"problem",
+                    "escalation_step_from":1,"escalation_step_to":None,
+                    "start_in_seconds":int(cfg.get("OPERATION_START_SECONDS","0")),
+                    "step_duration_seconds":int(cfg.get("OPERATION_REPEAT_SECONDS","1800")),
+                    "transports":transports
+                },{
+                    "name":cfg.get("OPERATION_NAME","Averna Cisco - Network Operations"),
+                    "operation_phase":"recovery",
+                    "escalation_step_from":1,"escalation_step_to":1,
+                    "start_in_seconds":0,"step_duration_seconds":0,
+                    "transports":transports
+                }]
+            elif op_id:
+                payload["alert_operation_id"]=int(op_id)
+        else:
+            payload["alert_operation_id"]=None
+
+        if old:
+            payload["rule_id"]=old["id"]
+            print(f"Uppfæri reglu: {name}")
+            api.call("PUT","/rules",payload)
+            rid=old["id"]
+        else:
+            print(f"Stofna reglu: {name}")
+            api.call("POST","/rules",payload)
+            if args.dry_run:
+                rid=f"dry-{idx}"
+            else:
+                refreshed=api.call("GET","/rules").get("rules",[])
+                new=find_by_name(refreshed,name)
+                if not new: raise RuntimeError(f"Regla fannst ekki eftir stofnun: {name}")
+                rid=new["id"]
+                if not op_id and idx==0 and new.get("alert_operation_id"):
+                    op_id=str(new["alert_operation_id"])
+                    print(f"Ný sameiginleg operation ID: {op_id}")
+            existing_rules=api.call("GET","/rules").get("rules",[]) if not args.dry_run else existing_rules
+        created_rule_ids[r["key"]]=rid
+
+    for td in tdefs:
+        body=(ROOT/td["file"]).read_text(encoding="utf-8")
+        rule_ids=[created_rule_ids[r["key"]] for r in rules if r["template"]==td["key"]]
+        old=find_by_name(existing_templates,td["name"])
+        payload={"name":td["name"],"template":body,"title":td["title"],"title_rec":td["title_rec"],"alert_rules":rule_ids}
+        if old:
+            payload["template_id"]=old["id"]
+            print(f"Uppfæri template: {td['name']}")
+        else:
+            print(f"Stofna template: {td['name']}")
+        api.call("POST","/alert_templates",payload)
+
+    print("\nLokið.")
+    if not transports and not cfg.get("ALERT_OPERATION_ID"):
+        print("ATH: Reglur voru settar án notifications. Settu ALERT_OPERATION_ID eða TRANSPORT_TARGETS og keyrðu aftur.")
+    print("Prófaðu reglur í Device -> Edit -> Capture -> Alerts.")
+    print("Prófaðu transport: /opt/librenms/scripts/test-alert.php -r RULE_ID -h HOSTNAME -d")
+
+if __name__=="__main__":
+    main()
