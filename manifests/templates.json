@@ -1,0 +1,37 @@
+[
+  {
+    "key": "device",
+    "name": "Averna Cisco - Device",
+    "file": "templates/device.blade.php",
+    "title": "🔴 {{ $alert->name }} | {{ $alert->hostname }}",
+    "title_rec": "🟢 RECOVERED | {{ $alert->hostname }}"
+  },
+  {
+    "key": "bgp",
+    "name": "Averna Cisco - Bgp",
+    "file": "templates/bgp.blade.php",
+    "title": "🔴/🟠 BGP | {{ $alert->hostname }}",
+    "title_rec": "🟢 BGP RECOVERED | {{ $alert->hostname }}"
+  },
+  {
+    "key": "interface",
+    "name": "Averna Cisco - Interface",
+    "file": "templates/interface.blade.php",
+    "title": "🔴 Interface | {{ $alert->hostname }}",
+    "title_rec": "🟢 Interface RECOVERED | {{ $alert->hostname }}"
+  },
+  {
+    "key": "sensor",
+    "name": "Averna Cisco - Sensor",
+    "file": "templates/sensor.blade.php",
+    "title": "🔴 Cisco Sensor | {{ $alert->hostname }}",
+    "title_rec": "🟢 Sensor RECOVERED | {{ $alert->hostname }}"
+  },
+  {
+    "key": "optical",
+    "name": "Averna Cisco - Optical",
+    "file": "templates/optical.blade.php",
+    "title": "🔴 Optical Power | {{ $alert->hostname }}",
+    "title_rec": "🟢 Optical RECOVERED | {{ $alert->hostname }}"
+  }
+]
