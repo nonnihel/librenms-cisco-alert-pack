@@ -1,0 +1,15 @@
+#!/usr/bin/env python3
+import json,ssl,urllib.request,sys
+from pathlib import Path
+root=Path(__file__).resolve().parents[1]
+cfg={}
+for l in (root/"config/alert-pack.env").read_text().splitlines():
+    if "=" in l and not l.lstrip().startswith("#"):
+        k,v=l.split("=",1);cfg[k.strip()]=v.strip()
+ctx=ssl.create_default_context() if cfg.get("VERIFY_TLS","true").lower()=="true" else ssl._create_unverified_context()
+for endpoint in ("rules","alert_templates"):
+    req=urllib.request.Request(cfg["LIBRENMS_URL"].rstrip("/")+"/api/v0/"+endpoint,headers={"X-Auth-Token":cfg["LIBRENMS_TOKEN"]})
+    with urllib.request.urlopen(req,context=ctx) as r: data=json.load(r)
+    print("\n==",endpoint,"==")
+    for x in data.get(endpoint if endpoint!="alert_templates" else "alert_templates",[]):
+        print(x.get("id"), x.get("name"), "operation=",x.get("alert_operation_id","-"))
