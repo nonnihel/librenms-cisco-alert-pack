@@ -1,0 +1,171 @@
+[
+  {
+    "key": "device_down",
+    "name": "Device Down",
+    "severity": "critical",
+    "disabled": 0,
+    "notes": "Cisco/Network tæki svarar ekki. Recovery er sent þegar tækið kemur aftur.",
+    "template": "device",
+    "builder": {
+      "condition": "AND",
+      "rules": [
+        {"id":"devices.status","field":"devices.status","type":"integer","input":"text","operator":"not_equal","value":"1"},
+        {"id":"devices.disabled","field":"devices.disabled","type":"integer","input":"text","operator":"equal","value":"0"},
+        {"id":"devices.ignore","field":"devices.ignore","type":"integer","input":"text","operator":"equal","value":"0"}
+      ],
+      "valid": true
+    }
+  },
+  {
+    "key": "device_rebooted",
+    "name": "Device Recently Rebooted",
+    "severity": "warning",
+    "disabled": 0,
+    "notes": "Tæki er uppi en uptime er styttra en 10 mínútur.",
+    "template": "device",
+    "builder": {
+      "condition": "AND",
+      "rules": [
+        {"id":"devices.status","field":"devices.status","type":"integer","input":"text","operator":"equal","value":"1"},
+        {"id":"devices.uptime","field":"devices.uptime","type":"integer","input":"text","operator":"less","value":"600"},
+        {"id":"devices.uptime","field":"devices.uptime","type":"integer","input":"text","operator":"greater","value":"0"}
+      ],
+      "valid": true
+    }
+  },
+  {
+    "key": "bgp_down",
+    "name": "BGP Session Down",
+    "severity": "critical",
+    "disabled": 0,
+    "notes": "BGP peer sem á að vera virkur er ekki Established.",
+    "template": "bgp",
+    "builder": {
+      "condition": "AND",
+      "rules": [
+        {"id":"devices.status","field":"devices.status","type":"integer","input":"text","operator":"equal","value":"1"},
+        {"id":"bgpPeers.bgpPeerState","field":"bgpPeers.bgpPeerState","type":"string","input":"text","operator":"not_equal","value":"established"}
+      ],
+      "valid": true
+    }
+  },
+  {
+    "key": "bgp_recent",
+    "name": "BGP Session Recently Re-established",
+    "severity": "warning",
+    "disabled": 0,
+    "notes": "BGP session er Established en hefur verið uppi skemur en 5 mínútur.",
+    "template": "bgp",
+    "builder": {
+      "condition": "AND",
+      "rules": [
+        {"id":"devices.status","field":"devices.status","type":"integer","input":"text","operator":"equal","value":"1"},
+        {"id":"bgpPeers.bgpPeerState","field":"bgpPeers.bgpPeerState","type":"string","input":"text","operator":"equal","value":"established"},
+        {"id":"bgpPeers.bgpPeerFsmEstablishedTime","field":"bgpPeers.bgpPeerFsmEstablishedTime","type":"integer","input":"text","operator":"less","value":"300"}
+      ],
+      "valid": true
+    }
+  },
+  {
+    "key": "critical_port_down",
+    "name": "Critical Interface Down",
+    "severity": "critical",
+    "disabled": 0,
+    "notes": "Vaktar aðeins port þar sem ifAlias inniheldur [ALERT]. Dæmi: [ALERT][WAN] Vodafone MetroNet.",
+    "template": "interface",
+    "builder": {
+      "condition": "AND",
+      "rules": [
+        {"id":"devices.status","field":"devices.status","type":"integer","input":"text","operator":"equal","value":"1"},
+        {"id":"ports.ifAdminStatus","field":"ports.ifAdminStatus","type":"string","input":"text","operator":"equal","value":"up"},
+        {"id":"ports.ifOperStatus","field":"ports.ifOperStatus","type":"string","input":"text","operator":"not_equal","value":"up"},
+        {"id":"ports.ifAlias","field":"ports.ifAlias","type":"string","input":"text","operator":"contains","value":"[ALERT]"}
+      ],
+      "valid": true
+    }
+  },
+  {
+    "key": "sensor_critical",
+    "name": "Hardware Sensor Outside Critical Limits",
+    "severity": "critical",
+    "disabled": 0,
+    "notes": "Almenn LibreNMS sensor-regla fyrir fan, PSU, hita, spennu og aðra sensors með limit-gildum.",
+    "template": "sensor",
+    "builder": {
+      "condition": "AND",
+      "rules": [
+        {"id":"devices.status","field":"devices.status","type":"integer","input":"text","operator":"equal","value":"1"},
+        {"id":"sensors.sensor_alert","field":"sensors.sensor_alert","type":"integer","input":"text","operator":"equal","value":"1"}
+      ],
+      "valid": true
+    }
+  },
+  {
+    "key": "optical_critical",
+    "name": "Optical RX-TX Outside Critical Limits",
+    "severity": "critical",
+    "disabled": 0,
+    "notes": "DOM/DDM dBm sensors utan alarm-marka. Ónotuð ljósport geta þurft að vera ignored í LibreNMS.",
+    "template": "optical",
+    "builder": {
+      "condition": "AND",
+      "rules": [
+        {"id":"devices.status","field":"devices.status","type":"integer","input":"text","operator":"equal","value":"1"},
+        {"id":"sensors.sensor_class","field":"sensors.sensor_class","type":"string","input":"text","operator":"equal","value":"dbm"},
+        {"id":"sensors.sensor_alert","field":"sensors.sensor_alert","type":"integer","input":"text","operator":"equal","value":"1"}
+      ],
+      "valid": true
+    }
+  },
+  {
+    "key": "temperature_critical",
+    "name": "Temperature Outside Critical Limits",
+    "severity": "critical",
+    "disabled": 0,
+    "notes": "Hitaskynjari utan LibreNMS/Cisco alarm-marka.",
+    "template": "sensor",
+    "builder": {
+      "condition": "AND",
+      "rules": [
+        {"id":"devices.status","field":"devices.status","type":"integer","input":"text","operator":"equal","value":"1"},
+        {"id":"sensors.sensor_class","field":"sensors.sensor_class","type":"string","input":"text","operator":"equal","value":"temperature"},
+        {"id":"sensors.sensor_alert","field":"sensors.sensor_alert","type":"integer","input":"text","operator":"equal","value":"1"}
+      ],
+      "valid": true
+    }
+  },
+  {
+    "key": "port_errors",
+    "name": "Interface Error Counter Increasing",
+    "severity": "warning",
+    "disabled": 1,
+    "notes": "Óvirk sjálfgefið. Virkja eftir að field/operator hefur verið staðfest með Device -> Capture -> Alerts.",
+    "template": "interface",
+    "builder": {
+      "condition": "AND",
+      "rules": [
+        {"id":"devices.status","field":"devices.status","type":"integer","input":"text","operator":"equal","value":"1"},
+        {"id":"ports.ifAdminStatus","field":"ports.ifAdminStatus","type":"string","input":"text","operator":"equal","value":"up"},
+        {"id":"ports.ifOperStatus","field":"ports.ifOperStatus","type":"string","input":"text","operator":"equal","value":"up"},
+        {"id":"ports.ifInErrors_delta","field":"ports.ifInErrors_delta","type":"integer","input":"text","operator":"greater","value":"100"}
+      ],
+      "valid": true
+    }
+  },
+  {
+    "key": "high_cpu",
+    "name": "High Processor Usage",
+    "severity": "warning",
+    "disabled": 1,
+    "notes": "Óvirk sjálfgefið vegna mismunandi processor-gagna milli IOS, IOS XE og NX-OS.",
+    "template": "sensor",
+    "builder": {
+      "condition": "AND",
+      "rules": [
+        {"id":"devices.status","field":"devices.status","type":"integer","input":"text","operator":"equal","value":"1"},
+        {"id":"processors.processor_usage","field":"processors.processor_usage","type":"integer","input":"text","operator":"greater","value":"90"}
+      ],
+      "valid": true
+    }
+  }
+]
