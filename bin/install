@@ -55,6 +55,7 @@ def main():
     for k in ("LIBRENMS_URL","LIBRENMS_TOKEN"):
         if not cfg.get(k) or cfg[k]=="CHANGE_ME": sys.exit(f"{k} vantar í config.")
     verify=cfg.get("VERIFY_TLS","true").lower() in ("1","true","yes")
+    install_disabled=cfg.get("INSTALL_DISABLED","true").lower() in ("1","true","yes")
     api=API(cfg["LIBRENMS_URL"],cfg["LIBRENMS_TOKEN"],verify,args.dry_run)
     prefix=cfg.get("RULE_PREFIX","Averna Cisco -").strip()
     op_id=cfg.get("ALERT_OPERATION_ID","").strip() or None
@@ -64,10 +65,16 @@ def main():
     existing_templates=api.call("GET","/alert_templates").get("alert_templates",[])
 
     if not args.no_backup and not args.dry_run:
+        backup_dir=ROOT/"backups"
+        backup_dir.mkdir(parents=True,exist_ok=True)
         stamp=datetime.now().strftime("%Y%m%d-%H%M%S")
-        out=ROOT/"backups"/f"before-install-{stamp}.json"
+        out=backup_dir/f"before-install-{stamp}.json"
         out.write_text(json.dumps({"rules":existing_rules,"templates":existing_templates},ensure_ascii=False,indent=2),encoding="utf-8")
         print(f"Backup: {out}")
+
+    if install_disabled:
+        print("SAFE MODE: allar Averna Cisco reglur verða settar Disabled.")
+        print("Virkjaðu aðeins eina reglu í einu eftir prófun í LibreNMS.")
 
     rules=json.loads((ROOT/"manifests/rules.json").read_text(encoding="utf-8"))
     tdefs=json.loads((ROOT/"manifests/templates.json").read_text(encoding="utf-8"))
@@ -79,7 +86,7 @@ def main():
         payload={
           "devices":["-1"],"groups":[],"locations":[],"invert_map":False,
           "name":name,"builder":r["builder"],"severity":r["severity"],
-          "disabled":r["disabled"],"invert":False,"notes":r["notes"]
+          "disabled":1 if install_disabled else r["disabled"],"invert":False,"notes":r["notes"]
         }
         if op_id:
             payload["alert_operation_id"]=int(op_id)
@@ -99,8 +106,6 @@ def main():
                     "start_in_seconds":0,"step_duration_seconds":0,
                     "transports":transports
                 }]
-            elif op_id:
-                payload["alert_operation_id"]=int(op_id)
         else:
             payload["alert_operation_id"]=None
 
@@ -138,9 +143,11 @@ def main():
         api.call("POST","/alert_templates",payload)
 
     print("\nLokið.")
+    if install_disabled:
+        print("SAFE MODE virkt: engin Averna Cisco regla var virkjuð.")
     if not transports and not cfg.get("ALERT_OPERATION_ID"):
         print("ATH: Reglur voru settar án notifications. Settu ALERT_OPERATION_ID eða TRANSPORT_TARGETS og keyrðu aftur.")
-    print("Prófaðu reglur í Device -> Edit -> Capture -> Alerts.")
+    print("Prófaðu reglur í Device -> Edit -> Capture -> Alerts áður en þær eru virkjaðar.")
     print("Prófaðu transport: /opt/librenms/scripts/test-alert.php -r RULE_ID -h HOSTNAME -d")
 
 if __name__=="__main__":
