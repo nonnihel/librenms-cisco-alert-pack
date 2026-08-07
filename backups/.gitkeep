@@ -1,0 +1,1 @@
+# Keeps the backups directory in Git. Runtime JSON backups are ignored by .gitignore.
